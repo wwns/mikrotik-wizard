@@ -1,5 +1,7 @@
 # MikroTik Network Designer
 
+[Polski](README.md) · [English](README.en.md) · [Deutsch](README.de.md)
+
 Przeglądarkowy projektant sieci MikroTik i generator konfiguracji RouterOS v7. Aplikacja działa jako statyczna strona — nie wymaga instalacji ani kompilacji.
 
 ## Uruchomienie
