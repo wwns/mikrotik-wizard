@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MikroTik Network Designer & Config Generator (Fixed Enterprise Edition)</title>
+  <style>
+    :root {
+      --bg: #070a13;
+      --panel: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --wan-color: #06b6d4;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+    body { background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; font-size: 13px; }
+
+    #sidebar { width: 380px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 20; }
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    #canvas-container { flex: 1; position: relative; background-color: var(--bg); background-image: radial-gradient(circle, #1e293b 1.5px, transparent 1.5px); background-size: 24px 24px; overflow: auto; }
+    #canvas { width: 3500px; height: 2500px; position: relative; }
+    #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+    #output { height: 340px; background: #020617; border-top: 2px solid var(--border); display: flex; flex-direction: column; z-index: 20; }
+
+    .topbar { background: var(--panel); padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .title { font-weight: 800; color: var(--accent); font-size: 14px; letter-spacing: 0.5px; }
+    .btn { background: var(--accent); color: #020617; border: none; border-radius: 5px; padding: 7px 14px; font-weight: 700; cursor: pointer; font-size: 12px; transition: 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn:hover { background: var(--accent-hover); color: #fff; }
+    .btn-sm { padding: 4px 8px; font-size: 11px; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: #334155; }
+    .btn-wan { background: #0891b2; color: #fff; }
+    .btn-wan:hover { background: #06b6d4; }
+    .btn-wifi { background: #059669; color: #fff; }
+    .btn-wifi:hover { background: #10b981; }
+    .btn-vpn { background: #9333ea; color: #fff; }
+    .btn-vpn:hover { background: #a855f7; }
+    .btn-net { background: #d97706; color: #fff; }
+    .btn-net:hover { background: #f59e0b; }
+    .btn-console { background: #4f46e5; color: #fff; }
+    .btn-console:hover { background: #6366f1; }
+
+    #output-resizer { height: 6px; background: var(--border); cursor: row-resize; flex-shrink: 0; position: relative; z-index: 21; }
+    #output-resizer:hover, #output-resizer.dragging { background: var(--accent); }
+    #output-resizer::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 42px; height: 3px; border-radius: 2px; background: var(--muted); }
+
+    .btn-module { padding: 4px 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.2px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.14); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; justify-content: center; }
+    .module-btn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 8px; }
+
+    .lang-select { background: #020617; border: 1px solid var(--accent); color: var(--accent); font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 11px; outline: none; cursor: pointer; }
+
+    .search-box { padding: 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+    .search-box input, .search-box select { width: 100%; background: #020617; border: 1px solid var(--border); color: #fff; padding: 7px 10px; border-radius: 4px; outline: none; font-size: 12px; }
+    .device-list { flex: 1; overflow-y: auto; padding: 10px; }
+    .device-card { background: #020617; border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer; transition: 0.2s; }
+    .device-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .device-card .name { font-weight: bold; color: #fff; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .device-card .specs { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.4; }
+    
+    .badge { padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; text-transform: uppercase; }
+    .badge-arm64 { background: #1e3a8a; color: #93c5fd; }
+    .badge-tile { background: #701a75; color: #f5d0fe; }
+    .badge-arm { background: #064e3b; color: #6ee7b7; }
+    .badge-mips { background: #7c2d12; color: #fdba74; }
+    .badge-swos { background: #374151; color: #d1d5db; }
+
+    .node { position: absolute; background: var(--panel); border: 2px solid var(--border); border-radius: 8px; width: 410px; padding: 12px; box-shadow: 0 12px 30px rgba(0,0,0,0.7); cursor: move; user-select: none; z-index: 10; }
+    .node.connecting { border-color: var(--warning); box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+    .node-title { font-weight: bold; font-size: 13.5px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .node-subtitle { font-size: 10px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; }
+
+    .node-globe { background: #082f49; border-color: #0284c7; width: 340px; }
+    .node-globe .node-title { color: #38bdf8; }
+
+    .port-matrix { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; background: #020617; padding: 8px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 8px; }
+    .port-btn { border: 1px solid var(--border); border-radius: 4px; padding: 4px 3px; font-size: 9px; text-align: center; cursor: pointer; transition: 0.15s; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; overflow: hidden; }
+    .port-btn .pname { font-weight: bold; font-size: 10px; }
+    .port-btn .prole { font-size: 9px; }
+    .port-btn.selected { outline: 2px solid var(--warning); border-color: var(--warning); background: #78350f !important; color: #fff !important; }
+    
+    .port-wan { background: #881337; border-color: #f43f5e; color: #ffe4e6; }
+    .port-trunk { background: #581c87; border-color: #a855f7; color: #faf5ff; }
+    .port-access { background: #064e3b; border-color: #10b981; color: #ecfdf5; }
+    .port-uplink { background: #0e7490; border-color: #22d3ee; color: #ecfeff; }
+    .port-vlan-10 { background: #064e3b; border-color: #10b981; color: #ecfdf5; }
+    .port-vlan-20 { background: #78350f; border-color: #f59e0b; color: #fffbeb; }
+
+    .node-options { background: #020617; border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 11px; }
+    .node-options label { display: flex; align-items: center; gap: 5px; cursor: pointer; color: var(--muted); }
+    .node-options label:hover { color: var(--text); }
+    .node-options input[type="checkbox"] { accent-color: var(--accent); }
+
+    #patch-panel { position: absolute; right: 20px; top: 20px; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--border); border-radius: 8px; padding: 12px; width: 350px; max-height: 250px; overflow-y: auto; z-index: 15; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+    .link-item { display: flex; justify-content: space-between; align-items: center; background: #020617; border: 1px solid #334155; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; font-size: 11px; font-family: monospace; }
+    .link-item.wan-link { border-color: #0891b2; }
+
+    .console-area { flex: 1; display: flex; overflow-x: auto; padding: 10px; gap: 12px; }
+    .script-box { flex: 1; min-width: 540px; background: #070a13; border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
+    .script-header { background: var(--panel); padding: 6px 12px; font-weight: bold; font-size: 11px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+    pre { margin: 0; padding: 12px; font-family: "JetBrains Mono", Consolas, Menlo, monospace; font-size: 11px; color: #7dd3fc; overflow: auto; flex: 1; line-height: 1.4; white-space: pre; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+    .modal-content { background: var(--panel); border: 2px solid var(--border); border-radius: 8px; width: 520px; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.8); max-height: 90vh; overflow-y: auto; }
+    .modal-title { font-size: 15px; font-weight: bold; color: var(--accent); margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: bold; }
+    .form-group input, .form-group select { width: 100%; background: #020617; border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; outline: none; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+    .chk-row { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; color: var(--text); line-height: 1.3; cursor: pointer; }
+    .chk-row input[type=checkbox] { margin-top: 2px; flex-shrink: 0; }
+    .band-heading { font-weight: bold; color: var(--accent); margin-top: 10px; margin-bottom: 6px; font-size: 12px; }
+    .channel-picker-row { display: flex; gap: 6px; }
+    .channel-picker-row select { flex: 1; }
+    .channel-chip-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; min-height: 22px; }
+    .channel-chip { display: flex; align-items: center; gap: 5px; background: #0f2b22; border: 1px solid #059669; color: #6ee7b7; border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 11px; }
+    .channel-chip.dfs { background: #2b1f0f; border-color: #d97706; color: #fbbf24; }
+    .channel-chip button { background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 5px; }
+    .channel-chip button:hover { color: #fff; }
+
+    /* Tooltips */
+    .has-tip { position: relative; display: inline-flex; align-items: center; cursor: help; }
+    .has-tip .tip-icon { font-size: 10px; color: var(--accent); background: rgba(56, 189, 248, 0.15); border-radius: 50%; width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; margin-left: 3px; }
+    
+    .has-tip .tooltip-text {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #020617;
+      color: #e2e8f0;
+      border: 1px solid var(--accent);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1.35;
+      width: 230px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+      z-index: 50;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      pointer-events: none;
+      font-weight: normal;
+      text-align: left;
+    }
+    .has-tip .tooltip-text::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: var(--accent) transparent transparent transparent;
+    }
+    .has-tip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+      transform: translateX(-50%) translateY(-4px);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Pasek boczny -->
+  <div id="sidebar">
+    <div class="topbar">
+      <div class="title" id="t_portfolio_title">MIKROTIK FULL PORTFOLIO</div>
+      <select class="lang-select" id="langSelect" onchange="changeLanguage(this.value)">
+        <option value="pl">PL 🇵🇱</option>
+        <option value="en">EN 🇬🇧</option>
+        <option value="de">DE 🇩🇪</option>
+      </select>
+    </div>
+    
+    <div style="padding: 12px; background: #082f49; border-bottom: 1px solid #0284c7; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <div style="font-weight: bold; color: #38bdf8;" id="t_isp_title">🌐 Dostawca Internetu (ISP)</div>
+        <div style="font-size: 11px; color: #93c5fd;" id="t_isp_sub">Orange, T-Mobile, DHCP, Static IP</div>
+      </div>
+      <button class="btn btn-wan btn-sm" onclick="addInternetGlobe()" id="t_btn_add_isp">+ Dodaj Providera</button>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="devFilter" placeholder="Szukaj (RB1100, CCR, hEX, hAP)..." onkeyup="filterDevices()" />
+      <select id="seriesFilter" onchange="filterDevices()">
+        <option value="ALL" id="t_filter_all">Wszystkie typy urządzeń</option>
+        <option value="router" id="t_filter_routers">Routery</option>
+        <option value="switch" id="t_filter_switches">Switche</option>
+      </select>
+    </div>
+    <div class="device-list" id="catalogList"></div>
+  </div>
+
+  <!-- Obszar roboczy -->
+  <div id="main">
+    <div class="topbar">
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span style="font-weight: bold; color: var(--accent); font-size: 12px;" id="t_status_label">STATUS:</span>
+        <span id="wireStatus" style="color: var(--muted); font-size: 11px;">Kliknij port na routerze lub u Providera, a potem na drugim urządzeniu, aby je spiąć kablem.</span>
+        <span id="t_zoom_tip" data-i18n-title="zoom_tip_title" style="color: var(--muted); font-size: 10px; white-space: nowrap;">💡 Kółko: zoom · Alt+przeciągnięcie / ŚPM: przesuwanie</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-secondary btn-sm" onclick="saveProject()" id="t_project_save">💾 Zapisz</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fileInput').click()" id="t_project_load">📂 Wczytaj</button>
+        <input type="file" id="fileInput" style="display:none" onchange="loadProject(event)" accept=".json,application/json">
+        <div style="width: 1px; background: var(--border); margin: 0 4px;"></div>
+        <button class="btn btn-secondary btn-sm" onclick="clearCanvas()" id="t_btn_clear">Wyczyść Planszę</button>
+        <button class="btn" onclick="generateAllScripts()" id="t_btn_generate">⚡ Generuj Konfiguracje RouterOS v7</button>
+      </div>
+    </div>
+
+    <div id="canvas-container">
+      <div id="canvas">
+        <svg id="svg-layer"></svg>
+      </div>
+
+      <!-- Patch Panel -->
+      <div id="patch-panel">
+        <div style="font-weight: bold; color: #38bdf8; font-size: 12px; margin-bottom: 8px; display: flex; justify-content: space-between;">
+          <span id="t_patch_title">Zestawione Połączenia Kablowe</span>
+          <span id="linkCount" style="color: var(--muted); font-size: 11px;">(0)</span>
+        </div>
+        <div id="linksList" style="color: var(--muted); font-size: 11px;">Brak połączeń kablowych.</div>
+      </div>
+    </div>
+
+    <div id="output-resizer" title="Przeciągnij, aby zmienić wysokość panelu"></div>
+
+    <!-- Wyjściowe skrypty -->
+    <div id="output">
+      <div class="topbar" style="border-bottom: 1px solid var(--border);">
+        <span style="font-size: 11px; font-weight: bold; color: var(--accent);" id="t_terminal_header">WYGENEROWANE SKRYPTY ROUTEROS v7 (Pełna Zgodność z Dokumentacją)</span>
+      </div>
+      <div class="console-area" id="consoleBoxes">
+        <div style="color: var(--muted); padding: 25px;" id="t_console_placeholder">Wybierz modele z lewego menu, dodaj Providera, połącz porty i kliknij "Generuj Konfiguracje".</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Network Management -->
+  <div id="net-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-title" id="netModalTitle">Zarządzanie Siecią (DHCP, Pool & DNS)</div>
+      
+      <div style="font-weight:bold; color:var(--accent); margin-bottom:6px; font-size:12px;" id="t_dns_db_heading">1. Baza Danych Serwerów DNS</div>
+      <div class="form-group">
+        <label class="has-tip">
+          <span id="t_dns_provider_label">Wybierz Dostawcę / Operatora DNS:</span>
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_dns_select">Automatycznie uzupełnia adresy resolverów DNS (IPv4/IPv6) oraz adresy DoH.</span>
+        </label>
+        <select id="dns_provider_select" onchange="applyDnsPreset(this.value)">
+          <option value="custom">-- Własna konfiguracja ręczna / Custom --</option>
+          <optgroup label="Global / Public">
+            <option value="cloudflare">Cloudflare (1.1.1.1 / 1.0.0.1) [Privacy]</option>
+            <option value="google">Google Public DNS (8.8.8.8 / 8.8.4.4) [High Availability]</option>
+            <option value="quad9">Quad9 (9.9.9.9 / 149.112.112.112) [Anti-malware]</option>
+            <option value="opendns">OpenDNS Cisco (208.67.222.222 / 208.67.220.220)</option>
+            <option value="adguard">AdGuard DNS (94.140.14.14 / 94.140.15.15) [AdBlock]</option>
+            <option value="controld">Control D (76.76.2.0 / 76.76.10.0)</option>
+          </optgroup>
+          <optgroup label="Polish ISPs (PL)">
+            <option value="orange">Orange Polska (194.204.159.1 / 194.204.152.34)</option>
+            <option value="play">Play / UPC (62.179.1.62 / 62.179.1.63)</option>
+            <option value="plus">Plus / Polsat Box (212.2.96.53 / 212.2.96.54)</option>
+            <option value="tmobile">T-Mobile Polska (213.158.194.1 / 213.158.194.2)</option>
+            <option value="netia">Netia (213.241.79.37 / 213.241.79.38)</option>
+            <option value="vectra">Vectra (109.241.1.1 / 109.241.2.2)</option>
+            <option value="inea">INEA (62.21.99.94 / 62.21.99.95)</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label id="t_dns_pri_v4_label">Podstawowy IPv4 DNS:</label>
+          <input type="text" id="net_dns_pri_v4" value="1.1.1.1" />
+        </div>
+        <div class="form-group">
+          <label id="t_dns_sec_v4_label">Alternatywny IPv4 DNS:</label>
+          <input type="text" id="net_dns_sec_v4" value="1.0.0.1" />
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label id="t_dns_pri_v6_label">Podstawowy IPv6 DNS (opcjonalny):</label>
+          <input type="text" id="net_dns_pri_v6" value="2606:4700:4700::1111" />
+        </div>
+        <div class="form-group">
+          <label id="t_dns_sec_v6_label">Alternatywny IPv6 DNS (opcjonalny):</label>
+          <input type="text" id="net_dns_sec_v6" value="2606:4700:4700::1001" />
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_doh_label">Protokół DoH (DNS-over-HTTPS):</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_doh">Szyfruje zapytania DNS w tunelu HTTPS (port 443), uniemożliwiając ich podgląd operatorowi ISP.</span>
+          </label>
+          <select id="net_doh_enabled">
+            <option value="none">Standard UDP/TCP 53</option>
+            <option value="cloudflare">Cloudflare DoH (https://1.1.1.1/dns-query)</option>
+            <option value="quad9">Quad9 DoH (https://dns.quad9.net/dns-query)</option>
+            <option value="google">Google DoH (https://dns.google/dns-query)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_dns_redirect_label">Przekierowanie DNS w NAT:</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_dns_redir">Wymusza na klientach LAN korzystanie z DNS routera (przechwytuje port 53 UDP/TCP i zapobiega omijaniu reguł).</span>
+          </label>
+          <select id="net_dns_redirect">
+            <option value="yes" id="t_opt_force_dns">Wymuś DNS Routera (Przekieruj port 53)</option>
+            <option value="no" id="t_opt_no_redir">Brak wymuszenia</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="font-weight:bold; color:var(--accent); margin-top:10px; margin-bottom:6px; font-size:12px;" id="t_dhcp_heading">2. Pule Adresowe & Serwer DHCP</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_pool_label">Zakres puli DHCP (IP Pool):</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_pool">Definiuje zakres dynamicznych adresów IP przydzielanych urządzeniom w sieci LAN (/ip pool).</span>
+          </label>
+          <input type="text" id="net_pool_input" value="192.168.10.100-192.168.10.200" />
+        </div>
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_lease_label">Czas dzierżawy (Lease Time):</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_lease">Czas, przez jaki adres IP pozostaje przypisany do urządzenia klienckiego.</span>
+          </label>
+          <input type="text" id="net_lease_input" value="12h" />
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_domain_label">Domena lokalna (Domain):</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_domain">Sufiks DNS rozgłaszany w sieci LAN (/ip dhcp-server network domain="...").</span>
+          </label>
+          <input type="text" id="net_domain_input" value="lan.mikrotik" />
+        </div>
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_auth_label">Tryb DHCP Authoritative:</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_auth">Gdy ustawione na 'yes', serwer natychmiast odrzuca niepoprawne dzierżawy DHCP z innych podsieci.</span>
+          </label>
+          <select id="net_dhcp_auth">
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="font-weight:bold; color:var(--accent); margin-top:10px; margin-bottom:6px; font-size:12px;" id="t_extra_tools_heading">3. Dodatkowe Narzędzia</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+        <label class="has-tip" style="font-size:11px; color:var(--text); display:flex; align-items:flex-start; gap:4px;">
+          <input type="checkbox" id="net_cloud_ddns" checked style="margin-top:2px; flex-shrink:0;" /> Cloud DDNS
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_cloud">Włącza darmową domenę dynamiczną MikroTik DDNS (*.sn.mynetname.net) w /ip cloud.</span>
+        </label>
+        <label class="has-tip" style="font-size:11px; color:var(--text); display:flex; align-items:flex-start; gap:4px;">
+          <input type="checkbox" id="net_proxy_enabled" style="margin-top:2px; flex-shrink:0;" /> Web Proxy
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_proxy">Uruchamia lokalny serwer pośredniczący HTTP Web Proxy na porcie TCP 8080.</span>
+        </label>
+        <label class="has-tip" style="font-size:11px; color:var(--text); display:flex; align-items:flex-start; gap:4px;">
+          <input type="checkbox" id="net_socks_enabled" style="margin-top:2px; flex-shrink:0;" /> SOCKS v5
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_socks">Uruchamia bezpieczny serwer tunelujący SOCKS v5 na porcie TCP 1080.</span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary" onclick="closeModal('net-modal')" id="t_btn_cancel_net">Anuluj</button>
+        <button class="btn btn-net" onclick="saveNetConfig()" id="t_btn_save_net">Zapisz Ustawienia</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal WiFi -->
+  <div id="wifi-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-title" id="wifiModalTitle">Konfiguracja WiFi</div>
+      <div class="form-group">
+        <label class="has-tip">
+          <span id="t_wifi_mode_label">Tryb pracy bezprzewodowej:</span>
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_wifi_mode">Wybierz pomiędzy autonomicznym AP, klientem mostu L2 (Outdoor CPE), wzmacniaczem (Repeater) a trybem CAPsMAN.</span>
+        </label>
+        <select id="wifi_mode_select">
+          <option value="ap">Standalone Access Point (Lokalny AP)</option>
+          <option value="station-bridge">Outdoor CPE (Stacja PtP)</option>
+          <option value="repeater">Repeater Mode</option>
+          <option value="capsman">CAPsMAN Mode</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label id="t_wifi_pass_label">Hasło (WPA2/WPA3 PSK):</label>
+        <input type="text" id="wifi_pass_input" />
+      </div>
+      <div class="form-group">
+        <label class="has-tip">
+          <span id="t_wifi_security_label">Uwierzytelnianie (szyfrowanie):</span>
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_wifi_security">Typ zabezpieczeń sieci (security.authentication-types= / security-profile). WPA3 wymaga nowego sterownika "wifi" (WiFi 6 / część WiFi 5).</span>
+        </label>
+        <select id="wifi_security_select">
+          <option value="wpa2-psk,wpa3-psk" id="t_sec_opt_mixed">WPA2/WPA3-PSK (Mixed, zalecane)</option>
+          <option value="wpa2-psk" id="t_sec_opt_wpa2">WPA2-PSK</option>
+          <option value="wpa3-psk" id="t_sec_opt_wpa3">WPA3-PSK (tylko nowe urządzenia)</option>
+        </select>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label id="t_wifi_vlan_label">Sieć VLAN dla WiFi:</label>
+          <select id="wifi_vlan_select"></select>
+        </div>
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_wifi_country_label">Kraj (Regulatory Domain):</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_wifi_country">Ustawia dozwolone kanały i moc nadawania zgodnie z przepisami danego kraju (country=).</span>
+          </label>
+          <select id="wifi_country_select">
+            <option value="poland">Polska</option>
+            <option value="germany">Niemcy</option>
+            <option value="czech republic">Czechy</option>
+            <option value="slovakia">Słowacja</option>
+            <option value="lithuania">Litwa</option>
+            <option value="ukraine">Ukraina</option>
+            <option value="united kingdom">Wielka Brytania</option>
+            <option value="united states">USA</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="band-heading" id="t_band5_heading">Sieć 5 GHz</div>
+      <div class="form-group">
+        <label class="chk-row">
+          <input type="checkbox" id="wifi_band5_enabled" /> <span id="t_band5_enable_label">Włącz pasmo 5 GHz</span>
+        </label>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label id="t_band5_ssid_label">SSID (5 GHz):</label>
+          <input type="text" id="wifi_band5_ssid" />
+        </div>
+        <div class="form-group">
+          <label id="t_band5_width_label">Szerokość kanału:</label>
+          <select id="wifi_band5_width">
+            <option value="20mhz">20 MHz</option>
+            <option value="20/40mhz">20/40 MHz</option>
+            <option value="20/40/80mhz">20/40/80 MHz</option>
+            <option value="20/40/80/160mhz">20/40/80/160 MHz</option>
+          </select>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end;">
+        <div class="form-group">
+          <label class="has-tip">
+            <span id="t_band5_freq_label">Kanały / częstotliwości (MHz):</span>
+            <span class="tip-icon">?</span>
+            <span class="tooltip-text" id="t_tip_band_freq">Lista częstotliwości oddzielonych przecinkami, spośród których router wybierze najlepszy kanał (channel.frequency).</span>
+          </label>
+          <div class="channel-picker-row">
+            <select id="wifi_band5_channel_picker"></select>
+            <button type="button" class="btn btn-secondary btn-sm" id="t_btn_add_channel5" onclick="addWifiChannel('band5')">+ Dodaj</button>
+          </div>
+          <div class="channel-chip-list" id="wifi_band5_channel_chips"></div>
+          <input type="hidden" id="wifi_band5_freq" />
+        </div>
+        <div class="form-group">
+          <label class="chk-row" style="margin-bottom:6px;">
+            <input type="checkbox" id="wifi_band5_ft" /> <span id="t_band5_ft_label">802.11r FT</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="band-heading" id="t_band24_heading">Sieć 2.4 GHz</div>
+      <div class="form-group">
+        <label class="chk-row">
+          <input type="checkbox" id="wifi_band24_enabled" /> <span id="t_band24_enable_label">Włącz pasmo 2.4 GHz</span>
+        </label>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label id="t_band24_ssid_label">SSID (2.4 GHz):</label>
+          <input type="text" id="wifi_band24_ssid" />
+        </div>
+        <div class="form-group">
+          <label id="t_band24_width_label">Szerokość kanału:</label>
+          <select id="wifi_band24_width">
+            <option value="20mhz">20 MHz</option>
+            <option value="20/40mhz">20/40 MHz</option>
+          </select>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end;">
+        <div class="form-group">
+          <label id="t_band24_freq_label">Kanały / częstotliwości (MHz):</label>
+          <div class="channel-picker-row">
+            <select id="wifi_band24_channel_picker"></select>
+            <button type="button" class="btn btn-secondary btn-sm" id="t_btn_add_channel24" onclick="addWifiChannel('band24')">+ Dodaj</button>
+          </div>
+          <div class="channel-chip-list" id="wifi_band24_channel_chips"></div>
+          <input type="hidden" id="wifi_band24_freq" />
+        </div>
+        <div class="form-group">
+          <label class="chk-row" style="margin-bottom:6px;">
+            <input type="checkbox" id="wifi_band24_ft" /> <span id="t_band24_ft_label">802.11r FT</span>
+          </label>
+        </div>
+      </div>
+
+
+      <div class="band-heading" id="t_wifi_extra_heading">Dodatkowe opcje</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <label class="chk-row">
+          <input type="checkbox" id="wifi_hide_ssid" /> <span id="t_wifi_hide_label">Ukryj SSID</span>
+        </label>
+        <label class="chk-row">
+          <input type="checkbox" id="wifi_isolate" /> <span id="t_wifi_isolate_label">Izolacja klientów (AP Isolation)</span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary" onclick="closeModal('wifi-modal')" id="t_btn_cancel_wifi">Anuluj</button>
+        <button class="btn btn-wifi" onclick="saveWifiConfig()" id="t_btn_save_wifi">Zapisz WiFi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal VPN -->
+  <div id="vpn-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-title" id="vpnModalTitle">Konfiguracja VPN (Virtual Private Networks)</div>
+      <div class="form-group">
+        <label class="has-tip">
+          <span id="t_vpn_proto_label">Protokół VPN (RouterOS v7):</span>
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_vpn_proto">Wybierz WireGuard, IPsec IKEv2, OpenVPN, L2TP lub SSTP zgodnie z dokumentacją RouterOS v7.</span>
+        </label>
+        <select id="vpn_proto_select" onchange="updateVpnFormFields()">
+          <option value="wireguard">WireGuard (Zalecany, szybki P2P)</option>
+          <option value="ipsec">IPsec IKEv2 (Standard korporacyjny)</option>
+          <option value="ovpn">OpenVPN (TCP/UDP AES-GCM)</option>
+          <option value="l2tp">L2TP / IPsec (Secret-based)</option>
+          <option value="sstp">SSTP (SSL over TCP 443)</option>
+        </select>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group">
+          <label>Tryb urządzenia / Mode:</label>
+          <select id="vpn_mode_select" onchange="updateVpnFormFields()">
+            <option value="server">Serwer VPN / Responder</option>
+            <option value="client">Klient VPN / Initiator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Port nasłuchiwania:</label>
+          <input type="number" id="vpn_port_input" value="13231" />
+        </div>
+      </div>
+      <div class="form-group" id="vpn_remote_host_group">
+        <label id="t_vpn_remote_host_label">Zdalny host / Endpoint (adres serwera):</label>
+        <input type="text" id="vpn_remote_host_input" placeholder="np. vpn.twojadomena.pl lub 203.0.113.5" />
+      </div>
+      <div class="form-group">
+        <label id="t_vpn_subnet_label">Podsieć tunelu (np. 172.16.0.1/24):</label>
+        <input type="text" id="vpn_subnet_input" value="172.16.0.1/24" />
+      </div>
+      <div class="form-group" id="vpn_username_group">
+        <label id="t_vpn_username_label">Nazwa użytkownika VPN:</label>
+        <input type="text" id="vpn_username_input" value="vpnuser" />
+      </div>
+      <div class="form-group" id="vpn_secret_group">
+        <label id="t_vpn_secret_label">Klucz prywatny / Hasło (Secret):</label>
+        <input type="text" id="vpn_secret_input" value="SuperTajneHasloVPN_2026!" />
+      </div>
+      <div class="form-group" id="vpn_wg_pubkey_group">
+        <label class="has-tip">
+          <span id="t_vpn_wg_pubkey_label">Klucz publiczny zdalnego peera (Base64):</span>
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_vpn_wg_pubkey">Odczytaj go po drugiej stronie komendą /interface wireguard print - klucz prywatny generuje się automatycznie na routerze.</span>
+        </label>
+        <input type="text" id="vpn_wg_pubkey_input" placeholder="np. v/oIzPyFm1FPHrqhytZgsKjU7mUToQHLrW+Tb5e601M=" />
+      </div>
+      <div class="form-group" id="vpn_wg_allowed_group">
+        <label id="t_vpn_wg_allowed_label">WireGuard Allowed Address (adres peera w tunelu):</label>
+        <input type="text" id="vpn_wg_allowed_input" value="172.16.0.2/32" />
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary" onclick="closeModal('vpn-modal')" id="t_btn_cancel_vpn">Anuluj</button>
+        <button class="btn btn-vpn" onclick="saveVpnConfig()" id="t_btn_save_vpn">Zapisz VPN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Konsole Gier (Port Forwarding) -->
+  <div id="console-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-title" id="consoleModalTitle">Przekierowanie Portów - Konsole</div>
+
+      <div class="band-heading" id="t_console_xbox_heading">Xbox Series X|S / One</div>
+      <div class="form-group">
+        <label class="chk-row">
+          <input type="checkbox" id="console_xbox_enabled" /> <span id="t_console_xbox_enable_label">Włącz przekierowanie portów Xbox</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="has-tip">
+          <span id="t_console_xbox_ip_label">Lokalny adres IP konsoli:</span>
+          <span class="tip-icon">?</span>
+          <span class="tooltip-text" id="t_tip_console_ip">Zalecane jest przypisanie konsoli stałego adresu IP (statyczny lease DHCP), aby reguły przekierowania portów zawsze trafiały we właściwe urządzenie.</span>
+        </label>
+        <input type="text" id="console_xbox_ip" placeholder="192.168.10.50" />
+      </div>
+
+      <div class="band-heading" id="t_console_ps5_heading">PlayStation 5</div>
+      <div class="form-group">
+        <label class="chk-row">
+          <input type="checkbox" id="console_ps5_enabled" /> <span id="t_console_ps5_enable_label">Włącz przekierowanie portów PlayStation 5</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label id="t_console_ps5_ip_label">Lokalny adres IP konsoli:</label>
+        <input type="text" id="console_ps5_ip" placeholder="192.168.10.51" />
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary" onclick="closeModal('console-modal')" id="t_btn_cancel_console">Anuluj</button>
+        <button class="btn btn-console" onclick="saveConsoleConfig()" id="t_btn_save_console">Zapisz</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="vlan-modal" class="modal-overlay">
+    <div class="modal-content" style="width: 700px; max-width: calc(100vw - 32px);">
+      <div class="modal-title" id="vlanModalTitle">Zarządzanie VLAN (802.1Q)</div>
+      <div id="t_vlan_description" style="margin-bottom: 12px; font-size: 11px; color: var(--muted);">
+        Zdefiniuj sieci VLAN i ich adresy bram. Etykiety portów access na schemacie pozwalają przypisywać VLAN-y do portów.
+      </div>
+      <div id="vlan_list_container" style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; padding-right: 5px; margin-bottom: 10px;"></div>
+      <button class="btn btn-secondary btn-sm" onclick="addVlanRow()" id="t_add_vlan">+ Dodaj nowy VLAN</button>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn btn-secondary" onclick="closeModal('vlan-modal')" id="t_cancel_vlan">Anuluj</button>
+        <button class="btn" style="background:#db2777; color:#fff;" onclick="saveVlanConfig()" id="t_save_vlan">Zapisz VLAN-y</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./i18n.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>
