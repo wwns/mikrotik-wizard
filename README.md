@@ -23,3 +23,16 @@ Przeglądarkowy projektant sieci MikroTik i generator konfiguracji RouterOS v7. 
 - `i18n.js` — tłumaczenia.
 
 Skrypty są ładowane jako klasyczne skrypty, dzięki czemu aplikację można uruchomić również bezpośrednio z pliku HTML.
+
+## Kontener Docker
+
+Obraz `ghcr.io/wwns/mikrotik-wizard:latest` jest publikowany automatycznie przez GitHub Actions po zmianie gałęzi `main`. Wymagany jest Docker.
+
+```sh
+docker pull ghcr.io/wwns/mikrotik-wizard:latest
+docker run --detach --name mikrotik-wizard --publish 8080:80 ghcr.io/wwns/mikrotik-wizard:latest
+```
+
+Otwórz <http://localhost:8080>. Aby zatrzymać kontener, wykonaj `docker stop mikrotik-wizard`.
+
+Wydania oznaczone tagiem `v*` publikują obraz z odpowiadającym tagiem wersji, np. `ghcr.io/wwns/mikrotik-wizard:v1.0.0`.
